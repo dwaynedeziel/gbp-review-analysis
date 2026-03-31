@@ -24,6 +24,8 @@ if "profiles" not in st.session_state:
     st.session_state.profiles = []
 if "analysis_result" not in st.session_state:
     st.session_state.analysis_result = None
+if "search_results" not in st.session_state:
+    st.session_state.search_results = []
 
 
 def go_to(step: int):
@@ -47,7 +49,7 @@ with st.sidebar:
 
     st.markdown("---")
     if st.button("Start Over"):
-        for key in ["step", "business_name", "business_type", "profiles", "analysis_result"]:
+        for key in ["step", "business_name", "business_type", "profiles", "analysis_result", "search_results"]:
             if key in st.session_state:
                 del st.session_state[key]
         st.rerun()
@@ -109,40 +111,48 @@ elif st.session_state.step == 2:
 
     # --- Google Places Search ---
     if has_api_key():
-        with st.expander("\U0001f50d Search Google Places (auto-fill review data)", expanded=False):
+        with st.expander("\U0001f50d Search Google Places (auto-fill review data)", expanded=bool(st.session_state.search_results)):
             search_query = st.text_input(
                 "Search for a business",
                 placeholder=f"{st.session_state.business_name} [city, state]",
                 key="places_search",
             )
-            if search_query and st.button("Search", key="search_btn"):
+            if st.button("Search", key="search_btn", disabled=not search_query):
                 with st.spinner("Searching Google Places..."):
-                    results = search_places(search_query)
-                if results:
-                    for r in results[:5]:
-                        col1, col2 = st.columns([3, 1])
-                        with col1:
-                            st.markdown(f"**{r['name']}** — {r['address']}")
-                            st.caption(f"Rating: {r['rating']} | Reviews: {r['total_reviews']}")
-                        with col2:
-                            if st.button("Add", key=f"add_{r['place_id']}"):
-                                dist = estimate_distribution(r["total_reviews"], r["rating"])
-                                new_profile = {
-                                    "name": r["name"],
-                                    "url": "",
-                                    "total_reviews": r["total_reviews"],
-                                    "average_rating": r["rating"],
-                                    "five_star": dist.five_star,
-                                    "four_star": dist.four_star,
-                                    "three_star": dist.three_star,
-                                    "two_star": dist.two_star,
-                                    "one_star": dist.one_star,
-                                    "estimated": True,
-                                }
-                                st.session_state.profiles.append(new_profile)
-                                st.rerun()
-                else:
+                    st.session_state.search_results = search_places(search_query)
+                if not st.session_state.search_results:
                     st.info("No results found. Try a different search query.")
+                st.rerun()
+
+            # Display results from session state (persists across reruns)
+            for idx, r in enumerate(st.session_state.search_results[:5]):
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.markdown(f"**{r['name']}** \u2014 {r['address']}")
+                    st.caption(f"Rating: {r['rating']} | Reviews: {r['total_reviews']}")
+                with col2:
+                    if st.button("Add", key=f"add_{idx}_{r['place_id']}"):
+                        dist = estimate_distribution(r["total_reviews"], r["rating"])
+                        new_profile = {
+                            "name": r["name"],
+                            "url": "",
+                            "total_reviews": r["total_reviews"],
+                            "average_rating": r["rating"],
+                            "five_star": dist.five_star,
+                            "four_star": dist.four_star,
+                            "three_star": dist.three_star,
+                            "two_star": dist.two_star,
+                            "one_star": dist.one_star,
+                            "estimated": True,
+                        }
+                        st.session_state.profiles.append(new_profile)
+                        st.session_state.search_results = []
+                        st.rerun()
+
+            if st.session_state.search_results:
+                if st.button("Clear results", key="clear_search"):
+                    st.session_state.search_results = []
+                    st.rerun()
     else:
         st.info(
             "Google Places API not configured. Add your API key to "
@@ -253,6 +263,7 @@ elif st.session_state.step == 2:
             type="primary",
             disabled=len(st.session_state.profiles) == 0,
         ):
+            st.session_state.search_results = []
             go_to(3)
             st.rerun()
 
